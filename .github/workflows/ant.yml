@@ -48,9 +48,7 @@ jobs:
           java-package: jdk
     - name: Build and test project
       working-directory: .
-      run: mvn -B verify
-      name: cd to folder
-      run: cd /home/runner/work/bspsrc/bspsrc
+      run: mvn -B verify cd /home/runner/work/bspsrc/bspsrc
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
       with:
