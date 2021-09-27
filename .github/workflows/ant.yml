@@ -50,8 +50,8 @@ jobs:
       working-directory: .
     
       run: mvn -B verify
-    - name: cd /home/runner/work/bspsrc/bspsrc/target/
-        working-directory: /home/runner/work/bspsrc/bspsrc/target/
+    
+    - working-directory: /home/runner/work/bspsrc/bspsrc/target/
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
       with:
