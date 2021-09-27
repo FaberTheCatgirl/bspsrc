@@ -53,7 +53,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: artifact.jar
-        path: ./target/github-actions-java-maven.jar
+        path: ./target/bspsrc.jar
   deploy:
     runs-on: ubuntu-20.04
     needs: build
@@ -64,7 +64,7 @@ jobs:
       uses: actions/download-artifact@v2
       with:
         name: artifact.jar
-        path: github-actions-java-maven/target
+        path: ./target
     - name: Build Docker container
       working-directory: .
       run: |
