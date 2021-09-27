@@ -26,8 +26,8 @@ jobs:
           java-package: jdk
           java-version: ${{ matrix.java }}
       - name: Compile the Project
-        working-directory: github-actions-java-maven
-        run: mvn -B src
+        working-directory: src
+        run: mvn -B compile
   build:
     runs-on: ubuntu-20.04
     needs: compile
