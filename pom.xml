@@ -79,6 +79,7 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <outputDirectory>./target</outputDirectory>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>info.ata4.bspsrc.BspSourceLauncher</mainClass>
@@ -96,15 +97,6 @@
                     <showDeprecation>true</showDeprecation>
                     <release>8</release>
                 </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-war-plugin</artifactId>
-                <version>2.0</version>
-                <configuration>
-                    <warName>test-web-app</warName>
-                    <outputDirectory>./target</outputDirectory>
-                 </configuration>
             </plugin>
 
         </plugins>
