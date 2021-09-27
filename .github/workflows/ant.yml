@@ -47,13 +47,13 @@ jobs:
           java-version: '11'
           java-package: jdk
     - name: Build and test project
-      working-directory: github-actions-java-maven
+      working-directory: .
       run: mvn -B verify
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
       with:
         name: artifact.jar
-        path: github-actions-java-maven/target/github-actions-java-maven.jar
+        path: ./target/github-actions-java-maven.jar
   deploy:
     runs-on: ubuntu-20.04
     needs: build
@@ -66,7 +66,7 @@ jobs:
         name: artifact.jar
         path: github-actions-java-maven/target
     - name: Build Docker container
-      working-directory: github-actions-java-maven
+      working-directory: .
       run: |
         docker build -t de.rieckpil.blog/github-actions-sample .
     - name: Access secrets
