@@ -52,13 +52,11 @@ jobs:
       working-directory: .
       run: mvn -B verify
 
-    - name: Change directory
-      run: cd $HOME
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
       with:
         name: artifact.jar
-        path: $HOME/runner/work/bspsrc/bspsrc/target/bspsrc-1.4.0-SNAPSHOT-shaded.jar
+        path: target/bspsrc-1.4.0-SNAPSHOT-shaded.jar
   deploy:
     runs-on: ubuntu-20.04
     needs: build
