@@ -48,7 +48,7 @@ jobs:
           java-package: jdk
     - name: Build and test project
       
-    
+      working-directory: .
       run: mvn -B verify
       working-directory: /home/runner/work/bspsrc/bspsrc/target/
 
