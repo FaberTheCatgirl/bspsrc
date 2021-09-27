@@ -47,13 +47,13 @@ jobs:
           java-version: '11'
           java-package: jdk
     - name: Build and test project
-      working-directory: .
-      run: mvn -B verify ; cd /home/runner/work/bspsrc/bspsrc
+      working-directory: /home/runner/work/bspsrc/bspsrc
+      run: mvn -B verify
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
       with:
         name: artifact.jar
-        path: /home/runner/work/bspsrc/bspsrc/target/bspsrc-1.4.0-SNAPSHOT-shaded.jar
+        path: bspsrc-1.4.0-SNAPSHOT-shaded.jar
   deploy:
     runs-on: ubuntu-20.04
     needs: build
