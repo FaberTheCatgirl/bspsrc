@@ -26,7 +26,7 @@ jobs:
           java-package: jdk
           java-version: ${{ matrix.java }}
       - name: Compile the Project
-        working-directory: src
+        working-directory: .
         run: mvn -B compile
   build:
     runs-on: ubuntu-20.04
