@@ -49,13 +49,11 @@ jobs:
 
     
     - name: Build and test project
-      
       working-directory: .
       run: mvn -B verify
-      
+
     - name: Change directory
-        run: |
-        cd /
+      run: cd /
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
       with:
