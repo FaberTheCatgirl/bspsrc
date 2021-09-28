@@ -84,7 +84,6 @@
                                     <mainClass>info.ata4.bspsrc.BspSourceLauncher</mainClass>
                                 </transformer>
                             </transformers>
-                            <outputFile>../guide/${project.artifactId}-${project.version}-shaded.jar</outputFile>
                          </configuration>
                     </execution>
                 </executions>
