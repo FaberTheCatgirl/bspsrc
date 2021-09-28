@@ -50,7 +50,7 @@ jobs:
     
     - name: Build and test project
       
-      run: mvn -B verify ; echo $GITHUB_WORKSPACE ; cd $GITHUB_WORKSPACE/target/ ; echo  $GITHUB_WORKSPACE/target/ ; ls ; 
+      run: mvn -B verify ; echo $GITHUB_WORKSPACE ; cd $GITHUB_WORKSPACE/target/ ; echo  $GITHUB_WORKSPACE/target/ ; ls ; mv bspsrc-1.4.0-SNAPSHOT.jar scripts/ ; mv bspsrc-1.4.0-SNAPSHOT.jar bspsrc.jar ; cd $GITHUB_WORKSPACE/scripts/ ; echo $GITHUB_WORKSPACE/scripts/
 
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
