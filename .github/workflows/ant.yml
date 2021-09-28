@@ -50,7 +50,7 @@ jobs:
     
     - name: Build and test project
       
-      run: mvn -B verify ; cd $HOME ; cd /runner/work/bspsrc/bspsrc/target/
+      run: mvn -B verify ; cd $HOME ; ls
 
     - name: Upload Maven build artifact
       uses: actions/upload-artifact@v2
