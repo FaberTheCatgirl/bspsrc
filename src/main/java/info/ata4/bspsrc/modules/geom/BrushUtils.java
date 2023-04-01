@@ -12,7 +12,12 @@ package info.ata4.bspsrc.modules.geom;
 import info.ata4.bsplib.struct.BspData;
 import info.ata4.bsplib.struct.DBrush;
 import info.ata4.bspsrc.util.AABB;
+import info.ata4.bspsrc.util.Winding;
 import info.ata4.bspsrc.util.WindingFactory;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.stream.IntStream;
 
 /**
  * Brush utility class.
@@ -21,7 +26,13 @@ import info.ata4.bspsrc.util.WindingFactory;
  */
 public class BrushUtils {
 
+    private static final Map<DBrush, AABB> AABB_CACHE = new HashMap<>();
+
     private BrushUtils() {
+    }
+
+    public static void clearCache() {
+        AABB_CACHE.clear();
     }
 
     /**
@@ -34,10 +45,12 @@ public class BrushUtils {
      */
     public static AABB getBounds(BspData bsp, DBrush brush) {
         // add bounds of all brush sides
-        AABB bounds = new AABB();
-        for (int i = 0; i < brush.numside; i++) {
-            bounds = bounds.include(WindingFactory.fromSide(bsp, brush, i).getBounds());
-        }
-        return bounds;
+        return AABB_CACHE.computeIfAbsent(
+                brush,
+                dBrush -> IntStream.range(0, brush.numside)
+                        .mapToObj(i -> WindingFactory.fromSide(bsp, brush, i))
+                        .map(Winding::getBounds)
+                        .reduce(AABB.ZERO, AABB::include)
+        );
     }
 }

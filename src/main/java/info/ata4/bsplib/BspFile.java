@@ -10,20 +10,22 @@
 
 package info.ata4.bsplib;
 
-import info.ata4.bsplib.app.SourceApp;
-import info.ata4.bsplib.app.SourceAppDB;
-import static info.ata4.bsplib.app.SourceAppID.*;
 import info.ata4.bsplib.io.LzmaUtil;
-import info.ata4.bsplib.lump.*;
+import info.ata4.bsplib.lump.GameLump;
+import info.ata4.bsplib.lump.Lump;
+import info.ata4.bsplib.lump.LumpFile;
+import info.ata4.bsplib.lump.LumpType;
 import info.ata4.bsplib.util.StringMacroUtils;
 import info.ata4.io.DataReader;
 import info.ata4.io.DataReaders;
 import info.ata4.io.DataWriter;
 import info.ata4.io.DataWriters;
-import static info.ata4.io.Seekable.Origin.CURRENT;
 import info.ata4.io.buffer.ByteBufferUtils;
 import info.ata4.io.util.XORUtils;
 import info.ata4.log.LogUtils;
+import org.apache.commons.io.EndianUtils;
+import org.apache.commons.io.FilenameUtils;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -34,8 +36,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import org.apache.commons.io.EndianUtils;
-import org.apache.commons.io.FilenameUtils;
+
+import static info.ata4.bsplib.app.SourceAppId.*;
+import static info.ata4.io.Seekable.Origin.CURRENT;
 
 /**
  * Low-level BSP file class for header and lump access.
@@ -78,7 +81,7 @@ public class BspFile {
     private int version;
     private int mapRev;
 
-    private SourceApp app = SourceApp.UNKNOWN;
+    private int appId = UNKNOWN;
 
     public BspFile() {
     }
@@ -131,26 +134,26 @@ public class BspFile {
             // Dark Messiah maps use 14 00 04 00 as version.
             // The actual BSP version is probably stored in the first two bytes...
             L.finer("Found Dark Messiah header");
-            app = SourceAppDB.getInstance().fromID(DARK_MESSIAH);
+            appId = DARK_MESSIAH;
             version &= 0xff;
         } else if (version == 27) {
             // Contagion maps use version 27, ignore VERSION_MAX in this case 
             L.finer("Found Contagion header");
-            app = SourceAppDB.getInstance().fromID(CONTAGION);
+            appId = CONTAGION;
         }
 
         // hack for L4D2 BSPs
         if (version == 21 && bb.getInt(8) == 0) {
             L.finer("Found Left 4 Dead 2 header");
-            app = SourceAppDB.getInstance().fromID(LEFT_4_DEAD_2);
+            appId = LEFT_4_DEAD_2;
         }
 
         // extra int for Contagion
-        if (app.getAppID() == CONTAGION) {
+        if (appId == CONTAGION) {
             bb.getInt(); // always 0?
         }
 
-        if (app.getAppID() == TITANFALL) {
+        if (appId == TITANFALL) {
             mapRev = bb.getInt();
             L.log(Level.FINER, "Map revision: {0}", mapRev);
 
@@ -160,7 +163,7 @@ public class BspFile {
         loadLumps(bb);
         loadGameLumps();
 
-        if (app.getAppID() == TITANFALL) {
+        if (appId == TITANFALL) {
             loadTitanfallLumpFiles();
             loadTitanfallEntityFiles();
         } else {
@@ -218,12 +221,24 @@ public class BspFile {
             bb = ByteBufferUtils.load(file);
         }
 
-        // make sure we have enough room for reading
-        if (bb.capacity() < HEADER_SIZE) {
+        if (bb.capacity() < 4) {
             throw new BspException("Invalid or missing header");
         }
 
         int ident = bb.getInt();
+
+        if (ident == 0x504B0304 || ident == 0x504B0506 || ident == 0x504B0708) {
+            // loaded file is a zip...
+            // this code is in place because a surprising amount of people try to decompile zip files
+            L.severe("File is a zip archive. Make sure to first extract any bsp file "
+                    + "it might contain and then select these for decompilation.");
+            throw new BspException("Loaded file is a zip archive");
+        }
+
+        // make sure we have enough room for reading
+        if (bb.capacity() < HEADER_SIZE) {
+            throw new BspException("Invalid or missing header");
+        }
 
         if (ident == BSP_ID) {
             // ordinary big-endian ident
@@ -241,7 +256,7 @@ public class BspFile {
         } else if (ident == BSP_ID_TF) {
             // Titanfall little-endian ident
             L.finer("Found Titanfall header");
-            app = SourceAppDB.getInstance().fromID(TITANFALL);
+            appId = TITANFALL;
             bo = ByteOrder.LITTLE_ENDIAN;
             return bb;
         }
@@ -292,7 +307,7 @@ public class BspFile {
         int numLumps;
 
         // Titanfall has more lumps
-        if (app.getAppID() == TITANFALL) {
+        if (appId == TITANFALL) {
             numLumps = HEADER_LUMPS_TF;
         } else {
             numLumps = HEADER_LUMPS;
@@ -302,7 +317,7 @@ public class BspFile {
             int vers, ofs, len, fourCC;
 
             // L4D2 maps use a different order
-            if (app.getAppID() == LEFT_4_DEAD_2) {
+            if (appId == LEFT_4_DEAD_2) {
                 vers = bb.getInt();
                 ofs = bb.getInt();
                 len = bb.getInt();
@@ -365,7 +380,7 @@ public class BspFile {
 
         for (Lump lump : lumps) {
             // write header
-            if (app.getAppID() == LEFT_4_DEAD_2) {
+            if (appId == LEFT_4_DEAD_2) {
                 bb.putInt(lump.getVersion());
                 bb.putInt(lump.getOffset());
                 bb.putInt(lump.getLength());
@@ -511,7 +526,7 @@ public class BspFile {
                     && checkInvalidHeaders(in, false)
                     && !checkInvalidHeaders(in, true)) {
                 L.finer("Found Vindictus game lump header");
-                app = SourceAppDB.getInstance().fromID(VINDICTUS);
+                appId = VINDICTUS;
             }
 
             int glumps = in.readInt();
@@ -519,14 +534,14 @@ public class BspFile {
             for (int i = 0; i < glumps; i++) {
                 int ofs, len, flags, vers, fourCC;
 
-                if (app.getAppID() == DARK_MESSIAH) {
+                if (appId == DARK_MESSIAH) {
                     in.readInt(); // unknown
                 }
 
                 fourCC = in.readInt();
 
                 // Vindictus uses integers rather than unsigned shorts
-                if (app.getAppID() == VINDICTUS) {
+                if (appId == VINDICTUS) {
                     flags = in.readInt();
                     vers = in.readInt();
                 } else {
@@ -613,7 +628,7 @@ public class BspFile {
 
         // lumpCount + dgamelump_t[lumpCount]
         int headerSize = 4;
-        if (app.getAppID() == VINDICTUS) {
+        if (appId == VINDICTUS) {
             headerSize += 20 * gameLumps.size();
         } else {
             headerSize += 16 * gameLumps.size();
@@ -641,7 +656,7 @@ public class BspFile {
 
                 // write header
                 out.writeInt(gl.getFourCC());
-                if (app.getAppID() == VINDICTUS) {
+                if (appId == VINDICTUS) {
                     out.writeInt(gl.getFlags());
                     out.writeInt(gl.getVersion());
                 } else {
@@ -695,7 +710,7 @@ public class BspFile {
 
         for (int i = 0; i < glumps; i++) {
             int index;
-            if (app.getAppID() == VINDICTUS) {
+            if (appId == VINDICTUS) {
                 index = 20 * i + 16;
             } else {
                 index = 16 * i + 12;
@@ -743,10 +758,8 @@ public class BspFile {
     }
 
     /**
-     * Returns the lump for the given lump type.
-     *
-     * @param type
-     * @return lump
+     * @param type The searched for {@link LumpType}
+     * @return the {@link Lump} for the given {@link LumpType}.
      */
     public Lump getLump(LumpType type) {
         return lumps.get(type.getIndex());
@@ -975,21 +988,19 @@ public class BspFile {
     /**
      * Returns the detected Source engine application for this file.
      * 
-     * @return Source engine application
+     * @return Source engine application ID
      */
-    public SourceApp getSourceApp() {
-        return app;
+    public int getAppId() {
+        return appId;
     }
-
     /**
      * Manually set the Source engine application used for file handling.
-     * 
-     * @param appID new Source engine application
+     *
+     * @param appId new Source engine application
      */
-    public void setSourceApp(SourceApp appID) {
-        this.app = appID;
+    public void setAppId(int appId) {
+        this.appId = appId;
     }
-
     /**
      * Returns the BSP reader for this file.
      * 

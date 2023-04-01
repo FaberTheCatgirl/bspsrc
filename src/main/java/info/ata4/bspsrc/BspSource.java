@@ -13,7 +13,8 @@ package info.ata4.bspsrc;
 import info.ata4.bsplib.BspFile;
 import info.ata4.bsplib.BspFileReader;
 import info.ata4.bsplib.PakFile;
-import info.ata4.bsplib.app.SourceAppID;
+import info.ata4.bsplib.app.SourceAppDB;
+import info.ata4.bsplib.app.SourceAppId;
 import info.ata4.bsplib.nmo.NmoException;
 import info.ata4.bsplib.nmo.NmoFile;
 import info.ata4.bspsrc.modules.BspDecompiler;
@@ -40,7 +41,7 @@ public class BspSource implements Runnable {
 
     private static final Logger L = LogUtils.getLogger();
 
-    public static final String VERSION = "1.4.1";
+    public static final String VERSION = "1.4.4";
 
     private final BspSourceConfig config;
 
@@ -103,7 +104,7 @@ public class BspSource implements Runnable {
 
         try {
             BspFile bsp = new BspFile();
-            bsp.setSourceApp(config.defaultApp);
+            bsp.setAppId(config.defaultAppId);
             bsp.load(bspFile.toPath());
 
             if (config.loadLumpFiles) {
@@ -131,7 +132,7 @@ public class BspSource implements Runnable {
 
         // load NMO if game is 'No More Room in Hell'
         NmoFile nmo = null;
-        if (reader.getBspFile().getSourceApp().getAppID() == SourceAppID.NO_MORE_ROOM_IN_HELL) {
+        if (reader.getBspFile().getAppId() == SourceAppId.NO_MORE_ROOM_IN_HELL) {
             if (nmoFile.exists()) {
                 try {
                     nmo = new NmoFile();
@@ -153,8 +154,12 @@ public class BspSource implements Runnable {
         }
 
         if (!config.isDebug()) {
+            int appId = reader.getBspFile().getAppId();
+            String gameName = SourceAppDB.getInstance().getName(appId)
+                    .orElse(String.valueOf(appId));
+
             L.log(Level.INFO, "BSP version: {0}", reader.getBspFile().getVersion());
-            L.log(Level.INFO, "Game: {0}", reader.getBspFile().getSourceApp());
+            L.log(Level.INFO, "Game: {0}", gameName);
         }
 
         // create and configure decompiler and start decompiling
@@ -174,7 +179,7 @@ public class BspSource implements Runnable {
     private VmfWriter getVmfWriter(File vmfFile) throws IOException {
         // write to file or omit output?
         if (config.nullOutput) {
-            return new VmfWriter(new NullOutputStream());
+            return new VmfWriter(NullOutputStream.NULL_OUTPUT_STREAM);
         } else {
             return new VmfWriter(vmfFile);
         }

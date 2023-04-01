@@ -11,15 +11,13 @@
 package info.ata4.bspsrc.modules;
 
 import info.ata4.bsplib.BspFileReader;
-import info.ata4.bsplib.app.SourceAppID;
+import info.ata4.bsplib.app.SourceAppId;
 import info.ata4.bsplib.nmo.NmoFile;
 import info.ata4.bspsrc.BspSource;
 import info.ata4.bspsrc.BspSourceConfig;
 import info.ata4.bspsrc.VmfWriter;
 import info.ata4.bspsrc.modules.entity.EntitySource;
-import info.ata4.bspsrc.modules.geom.BrushMode;
-import info.ata4.bspsrc.modules.geom.BrushSource;
-import info.ata4.bspsrc.modules.geom.FaceSource;
+import info.ata4.bspsrc.modules.geom.*;
 import info.ata4.bspsrc.modules.texture.TextureSource;
 import info.ata4.bspsrc.util.WindingFactory;
 import info.ata4.log.LogUtils;
@@ -40,6 +38,7 @@ public class BspDecompiler extends ModuleDecompile {
 
     // sub-modules
     private final BspSourceConfig config;
+    private final BrushSideFaceMapper brushSideFaceMapper;
     private final TextureSource texsrc;
     private final BrushSource brushsrc;
     private final FaceSource facesrc;
@@ -51,16 +50,18 @@ public class BspDecompiler extends ModuleDecompile {
         super(reader, writer);
 
         WindingFactory.clearCache();
+        BrushUtils.clearCache();
 
         this.config = config;
 
         texsrc = new TextureSource(reader);
         bspprot = new BspProtection(reader, texsrc);
         vmfmeta = new VmfMeta(reader, writer);
-        brushsrc = new BrushSource(reader, writer, config, texsrc, bspprot, vmfmeta);
+        brushSideFaceMapper = new BrushSideFaceMapper(reader);
+        brushsrc = new BrushSource(reader, writer, config, texsrc, bspprot, vmfmeta, brushSideFaceMapper);
         facesrc = new FaceSource(reader, writer, config, texsrc, vmfmeta);
         entsrc = new EntitySource(reader, writer, config, brushsrc, facesrc,
-                texsrc, bspprot, vmfmeta);
+                texsrc, bspprot, vmfmeta, brushSideFaceMapper);
     }
 
     /**
@@ -69,18 +70,16 @@ public class BspDecompiler extends ModuleDecompile {
     public void start() {
         // fix texture names
         texsrc.setFixTextureNames(config.fixCubemapTextures);
-
-        // VTBM has too many crucial game-specific tool textures that would break,
-        // so override the user selection
-        if (bspFile.getSourceApp().getAppID() == SourceAppID.VAMPIRE_BLOODLINES) {
-            texsrc.setFixToolTextures(false);
-        } else {
-            texsrc.setFixToolTextures(config.fixToolTextures);
-        }
+        texsrc.setFixToolTextures(config.fixToolTextures);
 
         // check for protection and warn if the map has been protected
         if (!config.skipProt) {
             checkProtection();
+        }
+
+        // we only need these for brushplanes mode
+        if (config.brushMode == BrushMode.BRUSHPLANES) {
+            brushSideFaceMapper.load();
         }
 
         // set comment
@@ -180,8 +179,9 @@ public class BspDecompiler extends ModuleDecompile {
                 entsrc.writeCubemaps();
             }
 
-            // Only write func_ladder if game is not csgo. Cso doesn't use the func_ladder entity
-            if (config.writeLadders && bspFile.getSourceApp().getAppID() != SourceAppID.COUNTER_STRIKE_GO) {
+            // Only write func_ladder if game uses object brush based ladders
+            // see https://developer.valvesoftware.com/wiki/Working_Ladders
+            if (config.writeLadders && !usesNonObjectBrushLadders(bspFile.getAppId())) {
                 entsrc.writeLadders();
             }
         }
@@ -192,5 +192,9 @@ public class BspDecompiler extends ModuleDecompile {
      */
     public void setNmoData(NmoFile nmo) {
         entsrc.setNmo(nmo);
+    }
+
+    public static boolean usesNonObjectBrushLadders(int appId) {
+        return appId == SourceAppId.COUNTER_STRIKE_GO;
     }
 }

@@ -11,7 +11,7 @@
 package info.ata4.bspsrc.modules.entity;
 
 import info.ata4.bsplib.BspFileReader;
-import info.ata4.bsplib.app.SourceAppID;
+import info.ata4.bsplib.app.SourceAppId;
 import info.ata4.bsplib.entity.Entity;
 import info.ata4.bsplib.entity.EntityIO;
 import info.ata4.bsplib.entity.KeyValue;
@@ -25,17 +25,13 @@ import info.ata4.bspsrc.VmfWriter;
 import info.ata4.bspsrc.modules.BspProtection;
 import info.ata4.bspsrc.modules.ModuleDecompile;
 import info.ata4.bspsrc.modules.VmfMeta;
-import info.ata4.bspsrc.modules.geom.BrushMode;
-import info.ata4.bspsrc.modules.geom.BrushSource;
-import info.ata4.bspsrc.modules.geom.BrushUtils;
-import info.ata4.bspsrc.modules.geom.FaceSource;
+import info.ata4.bspsrc.modules.geom.*;
 import info.ata4.bspsrc.modules.texture.TextureSource;
 import info.ata4.bspsrc.util.*;
 import info.ata4.log.LogUtils;
 
 import java.awt.*;
 import java.util.List;
-import java.util.Queue;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -65,14 +61,17 @@ public class EntitySource extends ModuleDecompile {
     private final TextureSource texsrc;
     private final BspProtection bspprot;
     private final VmfMeta vmfmeta;
+    private final BrushSideFaceMapper brushSideFaceMapper;
 
     // Areaportal to brush mapping
-    private AreaportalMapper areaportalMapper;
-    private Map<Integer, Integer> apBrushMap;
+    private final AreaportalMapper areaportalMapper;
+    // A map mapping areaportal ids to their supposed brush id
+    private final Map<Integer, Integer> apBrushMap;
 
     // Occluder to brushes mapping;
-    private OccluderMapper occluderMapper;
-    private Map<Integer, Set<Integer>> occBrushesMap;
+    private final OccluderMapper occluderMapper;
+    // A map mapping occluder ids to their supposed brush ids
+    private final Map<Integer, Set<Integer>> occBrushesMap;
 
     //'No More Room in Hell' Nmo data
     private NmoFile nmo;
@@ -82,7 +81,7 @@ public class EntitySource extends ModuleDecompile {
 
     public EntitySource(BspFileReader reader, VmfWriter writer, BspSourceConfig config,
             BrushSource brushsrc, FaceSource facesrc, TextureSource texsrc,
-            BspProtection bspprot, VmfMeta vmfmeta) {
+            BspProtection bspprot, VmfMeta vmfmeta, BrushSideFaceMapper brushSideFaceMapper) {
         super(reader, writer);
         this.config = config;
         this.brushsrc = brushsrc;
@@ -90,6 +89,7 @@ public class EntitySource extends ModuleDecompile {
         this.texsrc = texsrc;
         this.bspprot = bspprot;
         this.vmfmeta = vmfmeta;
+        this.brushSideFaceMapper = brushSideFaceMapper;
 
         processEntities();
 
@@ -112,10 +112,10 @@ public class EntitySource extends ModuleDecompile {
      * - detail brushes
      * Those are written by separate methods because of their different data models.
      *
-     * @see writeCubeMaps
-     * @see writeOverlays
-     * @see writeStaticProps
-     * @see writeDetails
+     * @see #writeCubemaps
+     * @see #writeOverlays
+     * @see #writeStaticProps
+     * @see #writeDetails
      */
     public void writeEntities() {
         L.info("Writing entities");
@@ -455,71 +455,63 @@ public class EntitySource extends ModuleDecompile {
     public void writeDetails() {
         L.info("Writing func_details");
 
+        Set<DBrush> funcDetailBrushes = bsp.brushes.stream()
+                .filter(brushsrc::isFuncDetail)
+                .filter(dBrush -> !bspprot.isProtectedBrush(dBrush))
+                .collect(Collectors.toSet());
+
+        Set<Set<DBrush>> funcDetailBrushGroups;
+
         if (config.detailMerge) {
-            Set<AABB> detailBounds = new HashSet<>();
-            Map<AABB, Integer> detailIndices = new HashMap<>();
+            int newGroupId = 0;
+            Map<DBrush, Integer> brushGroups = new HashMap<>();
+            for (DBrush funcDetailBrush : funcDetailBrushes) {
+                AABB brushBounds = BrushUtils.getBounds(bsp, funcDetailBrush);
+                AABB extendedBounds = brushBounds.expand(config.detailMergeThresh);
 
-            // add all detail brushes to queue
-            for (int i = 0; i < bsp.brushes.size(); i++) {
-                DBrush brush = bsp.brushes.get(i);
+                // get all ids of groups that touch this brush
+                Set<Integer> intersectingGroupIds = new HashSet<>();
+                brushGroups.forEach((dBrush, groupId) -> {
+                    if (!intersectingGroupIds.contains(groupId)) {
+                        AABB otherBrushBounds = BrushUtils.getBounds(bsp, dBrush);
+                        if (extendedBounds.intersectsWith(otherBrushBounds)) {
+                            intersectingGroupIds.add(groupId);
+                        }
+                    }
+                });
 
-                // skip non-detail/non-solid brushes
-                if (!brush.isFuncDetail(bspFile.getSourceApp().getAppID())) {
-                    continue;
+                if (!intersectingGroupIds.isEmpty()) {
+                    int finalNewGroupId = newGroupId;
+                    brushGroups.replaceAll((dBrush, groupId) -> {
+                        return intersectingGroupIds.contains(groupId) ? finalNewGroupId : groupId;
+                    });
                 }
-
-                // skip VMEX protector brushes
-                if (bspprot.isProtectedBrush(brush)) {
-                    continue;
-                }
-
-                // get bounding box of the detail brush
-                AABB bounds = BrushUtils.getBounds(bsp, brush);
-
-                // writeBrush() expects brush indices, so map it to the AABB
-                detailBounds.add(bounds);
-                detailIndices.put(bounds, i);
+                brushGroups.put(funcDetailBrush, newGroupId++);
             }
 
-            while (!detailBounds.isEmpty()) {
-                // get next group of merged brush AABBs
-                Set<AABB> detailBoundsGroup = mergeNearestNeighborAABB(
-                        detailBounds, config.detailMergeThresh);
-
-                // write brush group as func_detail to VMF
-                writer.start("entity");
-                writer.put("id", vmfmeta.getUID());
-                writer.put("classname", "func_detail");
-
-                for (AABB bounds : detailBoundsGroup) {
-                    brushsrc.writeBrush(detailIndices.get(bounds));
-                }
-
-                writer.end("entity");
-            }
+            Map<Integer, Set<DBrush>> inverseBrushGroups = new HashMap<>();
+            brushGroups.forEach((dBrush, groupId) -> inverseBrushGroups.computeIfAbsent(groupId, HashSet::new).add(dBrush));
+            funcDetailBrushGroups = new HashSet<>(inverseBrushGroups.values());
         } else {
-            for (int i = 0; i < bsp.brushes.size(); i++) {
-                DBrush brush = bsp.brushes.get(i);
-
-                // skip non-detail/non-solid brushes
-                if (!brush.isSolid() || !brush.isDetail()) {
-                    continue;
-                }
-
-                // skip VMEX protector brushes
-                if (bspprot.isProtectedBrush(brush)) {
-                    continue;
-                }
-
-                writer.start("entity");
-                writer.put("id", vmfmeta.getUID());
-                writer.put("classname", "func_detail");
-                brushsrc.writeBrush(i);
-
-                writer.end("entity");
-            }
+            funcDetailBrushGroups = funcDetailBrushes.stream()
+                    .map(Collections::singleton)
+                    .collect(Collectors.toSet());
         }
 
+        for (Set<DBrush> funcDetailBrushGroup : funcDetailBrushGroups) {
+            writer.start("entity");
+            writer.put("id", vmfmeta.getUID());
+            writer.put("classname", "func_detail");
+
+            funcDetailBrushGroup.stream()
+                    .map(bsp.brushes::indexOf)
+                    .forEach(brushsrc::writeBrush);
+
+            writer.end("entity");
+        }
+
+        // TODO: doesn't this cause all protected brushes to be written as func_detail
+        //  (and therefore also causing some brushes to be written twice)?
         // write protector brushes separately
         List<DBrush> protBrushes = bspprot.getProtectedBrushes();
         if (!protBrushes.isEmpty()) {
@@ -534,51 +526,6 @@ public class EntitySource extends ModuleDecompile {
 
             writer.end("entity");
         }
-    }
-
-    /**
-     * Transfers the next group of touching bounding volumes from a set of loose
-     * bounding volumes.
-     *
-     * @param src input bounding volumes
-     * @param thresh touching threshold
-     * @return set of bounding volumes that have been removed from src
-     */
-    private Set<AABB> mergeNearestNeighborAABB(Set<AABB> src, float thresh) {
-        // pop next AABB from src
-        Iterator<AABB> iter = src.iterator();
-        List<AABB> first = Collections.singletonList(iter.next());
-        iter.remove();
-
-        Queue<AABB> pending = new ArrayDeque<>(first);
-        Set<AABB> group = new HashSet<>(first);
-
-        // do while there are pending AABBs
-        while (!pending.isEmpty()) {
-            // get next pending AABB
-            AABB current = pending.remove();
-
-            // expand AABB slightly so it can touch other AABBs more reliably
-            AABB currentTest = current.expand(thresh);
-
-            iter = src.iterator();
-            while (iter.hasNext()) {
-                // get next AABB
-                AABB other = iter.next();
-
-                // is it touching the target AABB?
-                if (other.intersectsWith(currentTest)) {
-                    // add it as pending...
-                    pending.add(other);
-
-                    // ...and transfer to group
-                    iter.remove();
-                    group.add(other);
-                }
-            }
-        }
-
-        return group;
     }
 
     /**
@@ -646,20 +593,20 @@ public class EntitySource extends ModuleDecompile {
             int faceCount = o.getFaceCount();
 
             if (config.brushMode == BrushMode.BRUSHPLANES) {
-                Set<Integer> origFaces = new HashSet<>();
-
-                // collect original faces for this overlay
                 for (int j = 0; j < faceCount; j++) {
-                    int iface = o.ofaces[j];
-                    int ioface = bsp.faces.get(iface).origFace;
-                    if (ioface > 0) {
-                        origFaces.add(ioface);
-                    }
-                }
+                    DFace dFace = bsp.faces.get(o.ofaces[j]);
 
-                // scan brush sides for the original faces
-                for (Integer ioface : origFaces) {
-                    findOverlayFaces(i, ioface, sides);
+                    if (dFace.dispInfo >= 0) {
+                        sides.add(vmfmeta.getDispInfoUID(dFace.dispInfo));
+                    } else {
+                        int origFaceI = dFace.origFace;
+                        if (origFaceI < 0)
+                            continue;
+
+                        for (int brushSideI : brushSideFaceMapper.getBrushSideIndices(origFaceI)) {
+                            sides.add(brushsrc.getBrushSideIDForIndex(brushSideI));
+                        }
+                    }
                 }
             } else {
                 for (int j = 0; j < faceCount; j++) {
@@ -862,7 +809,7 @@ public class EntitySource extends ModuleDecompile {
     public void writeLadders() {
         L.info("Writing func_ladders");
 
-        for (int i = 0; i < bsp.brushes.size(); i++) {
+        for (int i = 0; i < brushsrc.getWorldbrushes(); i++) {
             DBrush brush = bsp.brushes.get(i);
 
             // skip non-ladder brushes
@@ -991,7 +938,7 @@ public class EntitySource extends ModuleDecompile {
 
             // replace escaped quotes for VTMB so they can be loaded with the
             // inofficial SDK Hammer
-            if (bspFile.getSourceApp().getAppID() == SourceAppID.VAMPIRE_BLOODLINES) {
+            if (bspFile.getAppId() == SourceAppId.VAMPIRE_BLOODLINES) {
                 for (Map.Entry<String, String> kv : ent.getEntrySet()) {
                     String value = kv.getValue();
                     value = value.replace("\\\"", "");
@@ -1005,15 +952,18 @@ public class EntitySource extends ModuleDecompile {
                 }
             }
 
-            // func_simpleladder entities are used by the engine only and won't
-            // work when re-compiling, so replace them with empty func_ladder's
-            // instead.
+            // func_simpleladder entities are created by left 4 dead engine branch
+            // we use these to reconstruct func_ladder entities
             if (className.equals("func_simpleladder")) {
                 int modelNum = ent.getModelNum();
+                String hammerId = ent.getValue("hammerid");
 
                 ent.clear();
                 ent.setClassName("func_ladder");
                 ent.setModelNum(modelNum);
+
+                if (hammerId != null)
+                    ent.setValue("hammerid", hammerId);
             }
 
             // fix light entities (except for dynamic lights)
