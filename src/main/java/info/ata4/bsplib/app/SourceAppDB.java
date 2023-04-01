@@ -32,7 +32,9 @@ public class SourceAppDB {
     private static SourceAppDB instance;
 
     private final List<SourceApp> appList = Arrays.asList(
+            ApexLegendsDef.APP,
             AlienSwarmDef.APP,
+            AlienSwarmReactiveDropDef.APP,
             BlackMesaDef.APP,
             BladeSymphonyDef.APP,
             BloodyGoodTimeDef.APP,
@@ -63,6 +65,7 @@ public class SourceAppDB {
             TeamFortress2Def.APP,
             TheShipDef.APP,
             TitanfallDef.APP,
+            Titanfall2Def.APP,
             VampireTheMasqueradeBloodlinesDef.APP,
             VindictusMabinogiHeroesDef.APP,
             ZenoClashDef.APP,

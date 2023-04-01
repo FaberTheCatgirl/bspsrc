@@ -54,6 +54,9 @@ public class SourceAppId {
     public static final int CONTAGION = 238430;
     public static final int BLACK_MESA = 362890;
     public static final int TITANFALL = 1454890;
+    public static final int TITANFALL_2 = 1237970;
+    public static final int APEX_LEGENDS = 1172470;
+    public static final int ALIEN_SWARM_REACTIVE_DROP = 563560;
 
     public static final int CYBER_DIVER = -500;
 }

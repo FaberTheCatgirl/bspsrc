@@ -160,12 +160,27 @@ public class BspFile {
             bb.getInt(); // always 127?
         }
 
+        if (appId == TITANFALL_2) {
+            mapRev = bb.getInt();
+            L.log(Level.FINER, "Map revision: {0}", mapRev);
+
+            bb.getInt(); // always 127?
+        }
+
         loadLumps(bb);
         loadGameLumps();
 
         if (appId == TITANFALL) {
             loadTitanfallLumpFiles();
             loadTitanfallEntityFiles();
+        } else {
+            mapRev = bb.getInt();
+            L.log(Level.FINER, "Map revision: {0}", mapRev);
+        }
+
+        if (appId == TITANFALL_2) {
+            loadTitanfall2LumpFiles();
+            loadTitanfall2EntityFiles();
         } else {
             mapRev = bb.getInt();
             L.log(Level.FINER, "Map revision: {0}", mapRev);
